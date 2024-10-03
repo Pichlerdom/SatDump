@@ -156,6 +156,7 @@ void SDRPlaySource::set_settings(nlohmann::json settings)
     am_notch = getValueOrDefault(d_settings["am_notch"], am_notch);
     antenna_input = getValueOrDefault(d_settings["antenna_input"], antenna_input);
     agc_mode = getValueOrDefault(d_settings["agc_mode"], agc_mode);
+    if_mode_index = getValueOrDefault(d_settings["if_mode"], if_mode_index);
 
     if (is_open && is_started)
     {
@@ -179,6 +180,7 @@ nlohmann::json SDRPlaySource::get_settings()
     d_settings["am_notch"] = am_notch;
     d_settings["antenna_input"] = antenna_input;
     d_settings["agc_mode"] = agc_mode;
+    d_settings["if_mode"] = if_mode_index;
 
     return d_settings;
 }
@@ -209,6 +211,9 @@ void SDRPlaySource::open()
     available_samplerates.push_back(10000000);
 
     samplerate_widget.set_list(available_samplerates, false);
+    if_mode_option_str = "";
+    for (ifMode if_mode : available_if_modes)
+        if_mode_option_str += if_mode.name + '\0';
 
     // Set max gain
     if (sdrplay_dev.hwVer == SDRPLAY_RSP1_ID) // RSP1
@@ -263,40 +268,31 @@ void SDRPlaySource::start()
     logger->debug("Set SDRPlay samplerate to " + std::to_string(current_samplerate));
     dev_params->devParams->fsFreq.fsHz = current_samplerate;
 
-    // Select right bandwidth
-    if (current_samplerate <= 200e3)
-        channel_params->tunerParams.bwType = sdrplay_api_BW_0_200;
-    else if (current_samplerate <= 300e3)
-        channel_params->tunerParams.bwType = sdrplay_api_BW_0_300;
-    else if (current_samplerate <= 600e3)
-        channel_params->tunerParams.bwType = sdrplay_api_BW_0_600;
-    else if (current_samplerate <= 1536e3)
-        channel_params->tunerParams.bwType = sdrplay_api_BW_1_536;
-    else if (current_samplerate <= 5e6)
-        channel_params->tunerParams.bwType = sdrplay_api_BW_5_000;
-    else if (current_samplerate <= 6e6)
-        channel_params->tunerParams.bwType = sdrplay_api_BW_6_000;
-    else if (current_samplerate <= 7e6)
-        channel_params->tunerParams.bwType = sdrplay_api_BW_7_000;
-    else // Otherwise default to max for >= 8MSPS
-        channel_params->tunerParams.bwType = sdrplay_api_BW_8_000;
+    ifMode *if_mode = &available_if_modes[if_mode_index];
+    sdrplay_api_If_kHzT current_if_type = if_mode->if_type;
+    sdrplay_api_Bw_MHzT current_if_bw;
+    if (if_mode->if_type == sdrplay_api_IF_Zero){
+      if (current_samplerate <= 5e6)
+        current_if_bw = sdrplay_api_BW_5_000;
+      else if (current_samplerate <= 6e6)
+        current_if_bw = sdrplay_api_BW_6_000;
+      else if (current_samplerate <= 7e6)
+        current_if_bw = sdrplay_api_BW_7_000;
+      else // Otherwise default to max for >= 8MSPS
+        current_if_bw = sdrplay_api_BW_8_000;
+    } else {
+      current_if_bw = if_mode->if_bw;
+      current_samplerate = if_mode->samplerate;
+    }
 
-    // Update samplerate & filter BW
-    sdrplay_api_Update(sdrplay_dev.dev, sdrplay_dev.tuner, sdrplay_api_Update_Dev_Fs, sdrplay_api_Update_Ext1_None);
-    sdrplay_api_Update(sdrplay_dev.dev, sdrplay_dev.tuner, sdrplay_api_Update_Tuner_BwType, sdrplay_api_Update_Ext1_None);
+    logger->debug("Set SDRPlay samplerate to " + std::to_string(current_samplerate));
+    dev_params->devParams->fsFreq.fsHz = current_samplerate;
 
-    // Sampling settings
-    channel_params->ctrlParams.decimation.enable = false;
-    channel_params->ctrlParams.dcOffset.DCenable = true;
-    channel_params->ctrlParams.dcOffset.IQenable = true;
-    sdrplay_api_Update(sdrplay_dev.dev, sdrplay_dev.tuner, sdrplay_api_Update_Ctrl_Decimation, sdrplay_api_Update_Ext1_None);
-    sdrplay_api_Update(sdrplay_dev.dev, sdrplay_dev.tuner, sdrplay_api_Update_Ctrl_DCoffsetIQimbalance, sdrplay_api_Update_Ext1_None);
+    logger->debug("Set Bandwidth Type to %d", current_if_bw);
+    channel_params->tunerParams.bwType = current_if_bw;
 
-    // IF and LO config
-    channel_params->tunerParams.ifType = sdrplay_api_IF_Zero;
-    channel_params->tunerParams.loMode = sdrplay_api_LO_Auto;
-    sdrplay_api_Update(sdrplay_dev.dev, sdrplay_dev.tuner, sdrplay_api_Update_Tuner_IfType, sdrplay_api_Update_Ext1_None);
-    sdrplay_api_Update(sdrplay_dev.dev, sdrplay_dev.tuner, sdrplay_api_Update_Tuner_LoMode, sdrplay_api_Update_Ext1_None);
+    logger->debug("Set IF Type to %d", current_if_type);
+    channel_params->tunerParams.ifType = current_if_type;
 
     is_started = true;
 
@@ -338,7 +334,11 @@ void SDRPlaySource::drawControlUI()
     if (is_started)
         RImGui::beginDisabled();
 
-    samplerate_widget.render();
+    RImGui::Combo("IF Mode", &if_mode_index, if_mode_option_str.c_str());
+
+    if( available_if_modes[if_mode_index].if_type == sdrplay_api_IF_Zero){
+        samplerate_widget.render();
+    }
 
     if (is_started)
         RImGui::endDisabled();

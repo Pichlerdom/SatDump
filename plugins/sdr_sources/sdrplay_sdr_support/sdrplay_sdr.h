@@ -19,6 +19,36 @@
 class SDRPlaySource : public dsp::DSPSampleSource
 {
 protected:
+
+    struct ifMode{
+      std::string name;
+      sdrplay_api_If_kHzT if_type;
+      sdrplay_api_Bw_MHzT if_bw;
+      uint64_t samplerate;
+    };
+
+    ifMode available_if_modes[10] = {
+        {"ZeroIF\0", sdrplay_api_IF_Zero, sdrplay_api_BW_Undefined, 2000000},
+        {"LowIF 450kHz, IFBW 200kHz\0", sdrplay_api_IF_0_450,
+         sdrplay_api_BW_0_200, 2000000},
+        {"LowIF 450kHz, IFBW 300kHz\0", sdrplay_api_IF_0_450,
+         sdrplay_api_BW_0_300, 2000000},
+        {"LowIF 450kHz, IFBW 600kHz\0", sdrplay_api_IF_0_450,
+         sdrplay_api_BW_0_600, 2000000},
+        {"LowIF 1620kHz, IFBW 200kHz\0", sdrplay_api_IF_1_620,
+         sdrplay_api_BW_0_200, 6000000},
+        {"LowIF 1620kHz, IFBW 300kHz\0", sdrplay_api_IF_1_620,
+         sdrplay_api_BW_0_300, 6000000},
+        {"LowIF 1620kHz, IFBW 600kHz\0", sdrplay_api_IF_1_620,
+         sdrplay_api_BW_0_600, 6000000},
+        {"LowIF 1620kHz, IFBW 1536kHz\0", sdrplay_api_IF_1_620,
+         sdrplay_api_BW_1_536, 6000000},
+        {"LowIF 2048kHz, IFBW 1536kHz\0", sdrplay_api_IF_2_048,
+         sdrplay_api_BW_1_536, 8000000},
+        {"LowIF 2048kHz, IFBW 5000kHz\0", sdrplay_api_IF_2_048,
+         sdrplay_api_BW_5_000, 8000000},
+    };
+
     bool is_open = false, is_started = false;
     sdrplay_api_DeviceT sdrplay_dev;
     sdrplay_api_DeviceParamsT *dev_params = nullptr;
@@ -32,8 +62,12 @@ protected:
 
     widgets::DoubleList samplerate_widget;
 
+    std::string if_mode_option_str;
+
     int lna_gain = 0;
     int if_gain = 20;
+
+    int if_mode_index = 0;
     bool bias = false;
     bool fm_notch = false;
     bool dab_notch = false;
